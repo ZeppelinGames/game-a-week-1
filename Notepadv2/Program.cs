@@ -22,8 +22,9 @@ namespace Notepadv2 {
 
         static NotepadActor _player = new Player();
         private static List<NotepadActor> actors = new List<NotepadActor>() {
-            new BombEnemy(),
-            new AnimatedNotepad()
+            //new BombEnemy(),
+            //new AnimatedNotepad(),
+            new AnimatedTextNotepad()
         };
 
         public static void Main(string[] args) {
@@ -36,7 +37,7 @@ namespace Notepadv2 {
             RunHook();
 
             // Setup loop timer
-            Timer timer = new Timer(Update, null, 16, 16);
+            Timer timer = new Timer(Update, null, 0, 16);
 
             Console.ReadLine();
 
