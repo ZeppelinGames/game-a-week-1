@@ -10,7 +10,7 @@ namespace Notepadv2 {
         public Player() {
             SetSize(100, 200);
             SetWindowTitle("PLAYER");
-            UpdateFont(100);
+            SetFont(100);
             SetText(":)");
         }
     }

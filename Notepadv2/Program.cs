@@ -16,15 +16,13 @@ namespace Notepadv2 {
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        static Random rnd = new Random();
 
         static TaskPoolGlobalHook globalHook;
-
-        static NotepadActor _player = new Player();
         private static List<NotepadActor> actors = new List<NotepadActor>() {
             //new BombEnemy(),
             //new AnimatedNotepad(),
-            new AnimatedTextNotepad()
+            new AnimatedTextNotepad(),
+            new NotepadButton()
         };
 
         public static void Main(string[] args) {
@@ -48,22 +46,18 @@ namespace Notepadv2 {
         static async void RunHook() {
             globalHook = new TaskPoolGlobalHook();
             globalHook.KeyTyped += GlobalHook_KeyTyped;
+            globalHook.MouseClicked += GlobalHook_MouseClicked;
             await globalHook.RunAsync();
         }
 
-        static void CloseApplication() {
-            Console.WriteLine("Quitting...");
+        private static void GlobalHook_MouseClicked(object? sender, MouseHookEventArgs e) {
+           e.SuppressEvent = true;
 
-            globalHook.KeyTyped -= GlobalHook_KeyTyped;
-
-            // Clean up windows
             for (int i = 0; i < actors.Count; i++) {
-                actors[i].Close();
+                actors[i].HandleMouse(e.Data);
             }
-            _player.Close();
-
-            Environment.Exit(0);
         }
+
 
         private static void GlobalHook_KeyTyped(object? sender, KeyboardHookEventArgs e) {
             e.SuppressEvent = true;
@@ -73,13 +67,27 @@ namespace Notepadv2 {
                 return;
             }
 
-            if(e.Data.KeyCode == SharpHook.Native.KeyCode.VcSpace) {
-                _player.SetText(">:)");
+            for (int i = 0; i < actors.Count; i++) {
+                actors[i].HandleInput(e.Data);
             }
         }
 
+        static void CloseApplication() {
+            Console.WriteLine("Quitting...");
+
+            // Deregister hooks
+            globalHook.KeyTyped -= GlobalHook_KeyTyped;
+            globalHook.MouseClicked -= GlobalHook_MouseClicked;
+
+            // Clean up windows
+            for (int i = 0; i < actors.Count; i++) {
+                actors[i].Close();
+            }
+
+            Environment.Exit(0);
+        }
+
         private static void Update(object? state) {
-            _player.Update(0.016f);
             for (int i = 0; i < actors.Count; i++) {
                 actors[i].Update(0.016f);
             }

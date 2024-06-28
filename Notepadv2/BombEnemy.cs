@@ -9,7 +9,7 @@ namespace Notepadv2 {
         public BombEnemy() {
             SetWindowTitle("BOMB!");
             SetText("O");
-            UpdateFont(128);
+            SetFont(128);
             SetPosition(500, 500);
         }
     }

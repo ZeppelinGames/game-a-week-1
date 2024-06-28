@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SharpHook.Native;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -8,6 +9,14 @@ using System.Text;
 
 namespace Notepadv2 {
     public abstract class NotepadActor {
+
+        public enum WindowStyle : uint {
+            WS_POPUP = 0x80000000,
+            WS_CAPTION = 0xC00000,
+            NO_MAXIMISE = 0x10000,
+            NO_MINIMISE = 0x20000,
+            WM_SYSMENU = 0x80000,
+        };
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT {
@@ -21,9 +30,6 @@ namespace Notepadv2 {
         private const int WM_GETTEXT = 0x000D;
         private const int WM_SETFONT = 0x0030;
         private const int GWL_STYLE = -16;
-        private const int WS_MAXIMIZEBOX = 0x10000;
-        private const int WS_MINIMIZEBOX = 0x20000;
-        private const int WS_SYSMENU = 0x80000;
 
         [DllImport("user32.dll")]
         public static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
@@ -52,14 +58,19 @@ namespace Notepadv2 {
         extern private static int GetWindowLong(IntPtr hwnd, int index);
 
         [DllImport("user32.dll")]
-        extern private static int SetWindowLong(IntPtr hwnd, int index, int value);
+        extern private static int SetWindowLongPtrA(IntPtr hwnd, int index, int value);
 
         private Process? _notepadProcess = null;
         private IntPtr _notepadHandle = IntPtr.Zero;
+
+        public string Text => _text;
+        public string Title => _title;
         private string _text = "";
         private string _title = "???";
 
-        private bool _isDirty = false;
+        private bool _textUpdate = false;
+        private bool _windowUpdate = false;
+        private bool _propertyUpdate = false;
 
         public int PositionX => _posX;
         public int PositionY => _posY;
@@ -74,6 +85,11 @@ namespace Notepadv2 {
         private int _moveX = 0;
         private int _moveY = 0;
 
+        private int _fontSize = 32;
+        private int _fontWeight = 1000;
+        private string _fontFamily = "Consolas";
+        private WindowStyle _style = WindowStyle.WS_POPUP;
+
         public NotepadActor(string windowTitle = "WINDOW", int positionX = 0, int positionY = 0, int sizeX = 200, int sizeY = 250, string innerText = "") {
             ProcessStartInfo startInfo = new ProcessStartInfo {
                 FileName = "notepad.exe",
@@ -87,12 +103,12 @@ namespace Notepadv2 {
                     _notepadHandle = FindWindowEx(_notepadProcess.MainWindowHandle, IntPtr.Zero, "Edit", null);
 
                     // Remove the buttons from notepad
-                    int currentStyle = GetWindowLong(_notepadProcess.MainWindowHandle, GWL_STYLE);
-                    SetWindowLong(_notepadProcess.MainWindowHandle, GWL_STYLE, (currentStyle & ~WS_SYSMENU));
+                    SetStyle(_style);
 
-                    UpdateFont(); 
-
-                    _isDirty = true;
+                    SetFont();
+                    _textUpdate = true;
+                    _windowUpdate = true;
+                    _propertyUpdate = true;
                 }
             });
             Thread t = new Thread(ts);
@@ -104,45 +120,46 @@ namespace Notepadv2 {
             SetText(innerText);
         }
 
-        public void UpdateFont(int fontSize = 64, string fontFamily = "Consolas") {
+        public void SetFont(int fontSize = 64, string fontFamily = "Consolas", int fontWeight = 1000) {
             // Set System font
-            IntPtr fontHandle = CreateFont(fontSize, 0, 0, 0, 1000, false, false, false, 0, 0, 0, 0, 0, fontFamily);
-            SendMessage(_notepadHandle, WM_SETFONT, fontHandle, "");
-            _isDirty = true;
+            _fontSize = fontSize;
+            _fontFamily = fontFamily;
+            _fontWeight = fontWeight;
+            _propertyUpdate = true;
+        }
+
+        public void SetStyle(WindowStyle style) {
+            _style = style;
+            _propertyUpdate = true;
         }
 
         public void SetText(string newText) {
             _text = newText;
-            _isDirty = true;
-        }
-
-        public void AddToEndOfText(string a) {
-            _text += a;
-            _isDirty = true;
+            _textUpdate = true;
         }
 
         public void SetPosition(int x, int y) {
             _posX = x;
             _posY = y;
-            _isDirty = true;
+            _windowUpdate = true;
         }
 
         public void MoveActor(int x, int y) {
             _posX += x;
             _posY += y;
-            _isDirty = true;
+            _windowUpdate = true;
         }
 
         public void SetSize(int x , int y) {
             _sizeX = x;
             _sizeY = y;
-            _isDirty = true;
+            _windowUpdate = true;
         }
 
         public void SetWindowTitle(string title) {
             // Set title
             _title = title;
-            _isDirty = true;
+            _textUpdate = true;
         }
 
         public virtual void Update(float dt) {
@@ -156,7 +173,7 @@ namespace Notepadv2 {
                 int height = windowRect.bottom - windowRect.top;
                 if (width != _sizeX || height != _sizeY ||
                     windowRect.top != _posY || windowRect.left != _posX) {
-                    _isDirty = true;
+                    _windowUpdate = true;
                 }
             }
 
@@ -164,24 +181,43 @@ namespace Notepadv2 {
                 _posX += _moveX;
                 _posY += _moveY;
 
-                _isDirty = true;
+                _windowUpdate = true;
             }
 
             string test  = SendMessage(_notepadHandle, WM_GETTEXT);
             Debug.Write(test);
 
-            if (_isDirty) {
-                _isDirty = false;
+            if (_textUpdate) {
+                _textUpdate = false;
+                
+                // Set title content
                 SendMessage(_notepadProcess.MainWindowHandle, WM_SETTEXT, 0, _title);
 
                 // Set text content
                 SendMessage(_notepadHandle, WM_SETTEXT, 0, _text);
 
+            }
+
+            if (_windowUpdate) {
+                _windowUpdate = false;
+             
                 // Move and size window
                 MoveWindow(_notepadProcess.MainWindowHandle, _posX, _posY, _sizeX, _sizeY, true);
+            }
 
+            if (_propertyUpdate) {
+                _propertyUpdate = false;
+
+                IntPtr fontHandle = CreateFont(_fontSize, 0, 0, 0, _fontWeight, false, false, false, 0, 0, 0, 0, 0, _fontFamily);
+                SendMessage(_notepadHandle, WM_SETFONT, fontHandle, "");
+
+                int currentStyle = GetWindowLong(_notepadProcess.MainWindowHandle, GWL_STYLE);
+                SetWindowLongPtrA(_notepadProcess.MainWindowHandle, GWL_STYLE, (currentStyle & ~(int)_style));
             }
         }
+
+        public virtual void HandleInput(KeyboardEventData keyData) { }
+        public virtual void HandleMouse(MouseEventData mouseData) { }
 
         public void Close() {
             if (_notepadProcess != null) {
